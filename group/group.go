@@ -7,13 +7,13 @@ import (
 //
 type Group struct {
 	groupID uuid.UUID
-	View    []int
+	View    []string
 }
 
 //
 func NewGroup(id uuid.UUID, size int) *Group {
 	return &Group{
 		id,
-		make([]int, size),
+		make([]string, 0),
 	}
 }
