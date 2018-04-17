@@ -6,8 +6,8 @@ import (
 
 //
 type Group struct {
-	ID   uuid.UUID
-	View []int
+	groupID uuid.UUID
+	View    []int
 }
 
 //
