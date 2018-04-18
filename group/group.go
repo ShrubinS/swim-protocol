@@ -6,14 +6,23 @@ import (
 
 //
 type Group struct {
-	groupID uuid.UUID
+	GroupID uuid.UUID
 	View    []string
 }
 
 //
-func NewGroup(id uuid.UUID, size int) *Group {
+func NewGroup(id uuid.UUID, self string) *Group {
 	return &Group{
 		id,
-		make([]string, 0),
+		[]string{
+			self,
+		},
+	}
+}
+
+func MakeGroup(id uuid.UUID, view []string) *Group {
+	return &Group{
+		id,
+		view,
 	}
 }

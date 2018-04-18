@@ -2,6 +2,7 @@ package node
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -40,7 +41,7 @@ func NewNode(host string, port int, createGroup bool) Node {
 			newNodeUUID,
 			host,
 			port,
-			group.NewGroup(newGroupUUID, 20),
+			group.NewGroup(newGroupUUID, fmt.Sprintf("%s:%s", host, strconv.Itoa(port))),
 		}
 	}
 
@@ -78,6 +79,7 @@ func (node Node) listen() {
 	}
 	for {
 		conn, err := ln.Accept()
+		// fmt.Println("conn", conn.RemoteAddr())
 		if err != nil {
 			// handle error
 		}
@@ -87,17 +89,29 @@ func (node Node) listen() {
 }
 
 func (node Node) handleConnection(conn net.Conn) {
-	conn.Write([]byte("Ack from " + node.nodeID.String()))
+	fmt.Println("ping from", conn.RemoteAddr())
+	sendMessage := Message{
+		node.groupView.GroupID,
+		node.nodeID,
+		node.groupView.View,
+	}
+	write, err := json.Marshal(sendMessage)
+	if err != nil {
+		log.Println("JSON Marshal error:", err)
+	}
+	conn.Write(write)
 }
 
 func (node Node) ping(existingGroup string) {
 	var dest string
 	nodeGroupView := node.groupView
+	fmt.Println("node groupview before", nodeGroupView)
 	if nodeGroupView == nil || len(nodeGroupView.View) == 0 {
 		if len(existingGroup) == 0 {
-			fmt.Println("Found no groups to ping")
+			// fmt.Println("Found no groups to ping")
 			return
 		}
+		fmt.Println("joining existing group")
 		dest = existingGroup
 	} else {
 		fmt.Println("existing group is", existingGroup)
@@ -109,13 +123,53 @@ func (node Node) ping(existingGroup string) {
 	conn, err := net.DialTimeout("tcp", dest, timeout)
 	if err != nil {
 		// log error
-		log.Fatal("Error: ", err)
+		log.Println("Error: ", err)
 		return
 	}
-	defer conn.Close()
-	scanner := bufio.NewScanner(conn)
-	fmt.Println(scanner.Text())
-	// log success
-	// log.Println("Connected to ", conn.RemoteAddr())
 
+	go readConnection(conn, &nodeGroupView)
+}
+
+func readConnection(conn net.Conn, groupView **group.Group) {
+	defer func() {
+		fmt.Println("Closing connection...")
+		conn.Close()
+	}()
+	decoder := json.NewDecoder(conn)
+	var receivedMessage Message
+	err := decoder.Decode(&receivedMessage)
+	if err != nil {
+		fmt.Println(err)
+	}
+	gv := group.MakeGroup(receivedMessage.GroupID, receivedMessage.Members)
+	*groupView = gv
+	fmt.Println(receivedMessage.Members)
+}
+
+func handleConnection(conn net.Conn) {
+	fmt.Println("Handling new connection...")
+
+	// Close connection when this function ends
+	defer func() {
+		fmt.Println("Closing connection...")
+		conn.Close()
+	}()
+
+	timeoutDuration := 5 * time.Second
+	bufReader := bufio.NewReader(conn)
+
+	for {
+		// Set a deadline for reading. Read operation will fail if no data
+		// is received after deadline.
+		conn.SetReadDeadline(time.Now().Add(timeoutDuration))
+
+		// Read tokens delimited by newline
+		bytes, err := bufReader.ReadBytes('\n')
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("%s", bytes)
+	}
 }
