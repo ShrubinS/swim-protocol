@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shrubins/swim-protocol/message"
+
 	"github.com/shrubins/swim-protocol/group"
 
 	"github.com/google/uuid"
@@ -38,11 +40,17 @@ func NewNode(host string, port int, createGroup bool) Node {
 	}
 
 	if createGroup {
+
+		member := message.Member{
+			NodeID:  newNodeUUID,
+			Address: fmt.Sprintf("%s:%s", host, strconv.Itoa(port)),
+		}
+
 		return Node{
 			newNodeUUID,
 			host,
 			port,
-			group.NewGroup(newGroupUUID, fmt.Sprintf("%s:%s", host, strconv.Itoa(port))),
+			group.NewGroup(newGroupUUID, member),
 		}
 	}
 
@@ -51,8 +59,8 @@ func NewNode(host string, port int, createGroup bool) Node {
 		host,
 		port,
 		&group.Group{
-			newGroupUUID,
-			nil,
+			GroupID: newGroupUUID,
+			View:    nil,
 		},
 	}
 }
@@ -93,11 +101,18 @@ func (node Node) listen() {
 }
 
 func (node Node) handleConnection(conn net.Conn) {
-	fmt.Println("ping from", conn.RemoteAddr())
-	sendMessage := Message{
-		node.groupView.GroupID,
-		node.nodeID,
-		node.groupView.View,
+	// fmt.Println("ping from", conn.RemoteAddr())
+	decoder := json.NewDecoder(conn)
+	var receivedMessage message.Message
+	err := decoder.Decode(&receivedMessage)
+	if err != nil {
+		fmt.Println("Server says: No message recieved", err)
+	}
+	fmt.Println("ping received")
+
+	sendMessage := message.Message{
+		GroupID: node.groupView.GroupID,
+		Members: node.groupView.View,
 	}
 	write, err := json.Marshal(sendMessage)
 	if err != nil {
@@ -116,13 +131,12 @@ func (node Node) ping(existingGroup string) {
 			// fmt.Println("Found no groups to ping")
 			return
 		}
-		fmt.Println("joining existing group")
+		fmt.Println("joining existing group", existingGroup)
 		dest = existingGroup
 	} else {
-		fmt.Println("existing group is", existingGroup)
-		fmt.Println("node group view has ", len(nodeGroupView.View))
+		fmt.Println("node group view has ", len(nodeGroupView.View), "member")
 		index := rand.Intn(len(nodeGroupView.View))
-		dest = nodeGroupView.View[index]
+		dest = nodeGroupView.View[index].Address
 	}
 	fmt.Println("Pinging", dest)
 	conn, err := net.DialTimeout("tcp", dest, timeout)
@@ -132,20 +146,31 @@ func (node Node) ping(existingGroup string) {
 		return
 	}
 
-	go readConnection(conn, updatedGroupView)
+	go node.readConnection(conn, updatedGroupView)
 
 	update := <-updatedGroupView
 	*node.groupView = *update
 }
 
-func readConnection(conn net.Conn, groupView chan *group.Group) {
+func (node Node) readConnection(conn net.Conn, groupView chan *group.Group) {
 	defer func() {
 		fmt.Println("Closing connection...")
 		conn.Close()
 	}()
+
+	sendMessage := message.Message{
+		GroupID: node.groupView.GroupID,
+		Members: node.groupView.View,
+	}
+	write, err := json.Marshal(sendMessage)
+	if err != nil {
+		log.Println("JSON Marshal error:", err)
+	}
+	conn.Write(write)
+
 	decoder := json.NewDecoder(conn)
-	var receivedMessage Message
-	err := decoder.Decode(&receivedMessage)
+	var receivedMessage message.Message
+	err = decoder.Decode(&receivedMessage)
 	if err != nil {
 		fmt.Println(err)
 	}

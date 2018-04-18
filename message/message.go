@@ -1,13 +1,17 @@
-package node
+package message
 
 import (
 	"github.com/google/uuid"
 )
 
+type Member struct {
+	NodeID  uuid.UUID `json:"node"`
+	Address string
+}
+
 type Message struct {
 	GroupID uuid.UUID `json:"group"`
-	NodeID  uuid.UUID `json:"node"`
-	Members []string  `json:"members"`
+	Members []Member  `json:"members"`
 }
 
 // func (message Message) encode() ([]byte, error) {
