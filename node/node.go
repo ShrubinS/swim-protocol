@@ -10,8 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shrubins/swim-protocol/group"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -49,7 +50,10 @@ func NewNode(host string, port int, createGroup bool) Node {
 		newNodeUUID,
 		host,
 		port,
-		nil,
+		&group.Group{
+			newGroupUUID,
+			nil,
+		},
 	}
 }
 
@@ -104,6 +108,7 @@ func (node Node) handleConnection(conn net.Conn) {
 
 func (node Node) ping(existingGroup string) {
 	var dest string
+	updatedGroupView := make(chan *group.Group, 1)
 	nodeGroupView := node.groupView
 	fmt.Println("node groupview before", nodeGroupView)
 	if nodeGroupView == nil || len(nodeGroupView.View) == 0 {
@@ -127,10 +132,13 @@ func (node Node) ping(existingGroup string) {
 		return
 	}
 
-	go readConnection(conn, &nodeGroupView)
+	go readConnection(conn, updatedGroupView)
+
+	update := <-updatedGroupView
+	*node.groupView = *update
 }
 
-func readConnection(conn net.Conn, groupView **group.Group) {
+func readConnection(conn net.Conn, groupView chan *group.Group) {
 	defer func() {
 		fmt.Println("Closing connection...")
 		conn.Close()
@@ -142,7 +150,7 @@ func readConnection(conn net.Conn, groupView **group.Group) {
 		fmt.Println(err)
 	}
 	gv := group.MakeGroup(receivedMessage.GroupID, receivedMessage.Members)
-	*groupView = gv
+	groupView <- gv
 	fmt.Println(receivedMessage.Members)
 }
 
