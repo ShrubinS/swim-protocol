@@ -1,7 +1,6 @@
 package node
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -39,12 +38,12 @@ func NewNode(host string, port int, createGroup bool) Node {
 		log.Fatal("Error generating Group UUID:\n" + err.Error())
 	}
 
-	if createGroup {
+	member := message.Member{
+		NodeID:  newNodeUUID,
+		Address: fmt.Sprintf("%s:%s", host, strconv.Itoa(port)),
+	}
 
-		member := message.Member{
-			NodeID:  newNodeUUID,
-			Address: fmt.Sprintf("%s:%s", host, strconv.Itoa(port)),
-		}
+	if createGroup {
 
 		return Node{
 			newNodeUUID,
@@ -58,10 +57,7 @@ func NewNode(host string, port int, createGroup bool) Node {
 		newNodeUUID,
 		host,
 		port,
-		&group.Group{
-			GroupID: newGroupUUID,
-			View:    nil,
-		},
+		group.NotGroup(member),
 	}
 }
 
@@ -110,6 +106,12 @@ func (node Node) handleConnection(conn net.Conn) {
 	}
 	fmt.Println("ping received")
 
+	receivedMessage.String()
+
+	for _, m := range receivedMessage.Members {
+		node.groupView.AddToGroup(m)
+	}
+
 	sendMessage := message.Message{
 		GroupID: node.groupView.GroupID,
 		Members: node.groupView.View,
@@ -125,8 +127,7 @@ func (node Node) ping(existingGroup string) {
 	var dest string
 	updatedGroupView := make(chan *group.Group, 1)
 	nodeGroupView := node.groupView
-	fmt.Println("node groupview before", nodeGroupView)
-	if nodeGroupView == nil || len(nodeGroupView.View) == 0 {
+	if nodeGroupView == nil || len(nodeGroupView.View) == 0 || !nodeGroupView.RealGroup {
 		if len(existingGroup) == 0 {
 			// fmt.Println("Found no groups to ping")
 			return
@@ -134,11 +135,10 @@ func (node Node) ping(existingGroup string) {
 		fmt.Println("joining existing group", existingGroup)
 		dest = existingGroup
 	} else {
-		fmt.Println("node group view has ", len(nodeGroupView.View), "member")
+		fmt.Println("node group view has ", len(nodeGroupView.View), "members")
 		index := rand.Intn(len(nodeGroupView.View))
 		dest = nodeGroupView.View[index].Address
 	}
-	fmt.Println("Pinging", dest)
 	conn, err := net.DialTimeout("tcp", dest, timeout)
 	if err != nil {
 		// log error
@@ -162,6 +162,10 @@ func (node Node) readConnection(conn net.Conn, groupView chan *group.Group) {
 		GroupID: node.groupView.GroupID,
 		Members: node.groupView.View,
 	}
+
+	fmt.Println("Pinging message...")
+	sendMessage.String()
+
 	write, err := json.Marshal(sendMessage)
 	if err != nil {
 		log.Println("JSON Marshal error:", err)
@@ -179,30 +183,30 @@ func (node Node) readConnection(conn net.Conn, groupView chan *group.Group) {
 	fmt.Println(receivedMessage.Members)
 }
 
-func handleConnection(conn net.Conn) {
-	fmt.Println("Handling new connection...")
+// func handleConnection(conn net.Conn) {
+// 	fmt.Println("Handling new connection...")
 
-	// Close connection when this function ends
-	defer func() {
-		fmt.Println("Closing connection...")
-		conn.Close()
-	}()
+// 	// Close connection when this function ends
+// 	defer func() {
+// 		fmt.Println("...Closing connection...")
+// 		conn.Close()
+// 	}()
 
-	timeoutDuration := 5 * time.Second
-	bufReader := bufio.NewReader(conn)
+// 	timeoutDuration := 5 * time.Second
+// 	bufReader := bufio.NewReader(conn)
 
-	for {
-		// Set a deadline for reading. Read operation will fail if no data
-		// is received after deadline.
-		conn.SetReadDeadline(time.Now().Add(timeoutDuration))
+// 	for {
+// 		// Set a deadline for reading. Read operation will fail if no data
+// 		// is received after deadline.
+// 		conn.SetReadDeadline(time.Now().Add(timeoutDuration))
 
-		// Read tokens delimited by newline
-		bytes, err := bufReader.ReadBytes('\n')
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+// 		// Read tokens delimited by newline
+// 		bytes, err := bufReader.ReadBytes('\n')
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			return
+// 		}
 
-		fmt.Printf("%s", bytes)
-	}
-}
+// 		fmt.Printf("%s", bytes)
+// 	}
+// }

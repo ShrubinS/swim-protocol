@@ -1,6 +1,8 @@
 package message
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 )
 
@@ -14,8 +16,18 @@ type Message struct {
 	Members []Member  `json:"members"`
 }
 
-// func (message Message) encode() ([]byte, error) {
-// 	return json.Marshal(message)
-// }
+func (m1 Member) Is(m2 Member) bool {
+	if m1.NodeID == m2.NodeID {
+		return true
+	}
+	return false
+}
+
+func (message Message) String() {
+	fmt.Println("Message is.... ")
+	for _, m := range message.Members {
+		fmt.Printf("NodeID:%s\nAddress:%s\n", m.NodeID, m.Address)
+	}
+}
 
 // func
